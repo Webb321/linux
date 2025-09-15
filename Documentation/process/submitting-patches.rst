@@ -878,6 +878,16 @@ to properly perform ``git am`` without worrying about conflicts::
 Please see ``man git-format-patch`` for more information about this
 option.
 
+For kernel development, you can use the convenience script
+``scripts/format-patch`` which provides kernel-specific defaults::
+
+    $ ./scripts/format-patch HEAD~3       # Format last 3 commits
+    $ ./scripts/format-patch -c HEAD~5    # With cover letter
+    $ ./scripts/format-patch -r HEAD~2    # RFC patches
+
+The script automatically applies signoff, uses appropriate subject
+prefixes, and sets up proper threading for mailing lists.
+
 .. note::
 
     The ``--base`` feature was introduced in git version 2.9.0.

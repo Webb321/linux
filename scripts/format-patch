@@ -1,0 +1,189 @@
+#!/bin/bash
+# SPDX-License-Identifier: GPL-2.0
+#
+# Kernel-specific git format-patch wrapper script
+# This script provides sensible defaults for formatting patches for kernel submission
+#
+# Usage: format-patch [options] <commit-range>
+#
+# This wrapper automatically applies kernel-specific formatting rules:
+# - Uses [PATCH] subject prefix by default
+# - Enables signoff by default
+# - Sets output directory to outgoing/ by default
+# - Adds proper base commit information
+# - Uses kernel-preferred threading style
+
+set -e
+
+SCRIPT_NAME=$(basename "$0")
+OUTPUT_DIR="outgoing"
+KERNEL_SUBJECT_PREFIX="PATCH"
+SIGNOFF=1
+COVER_LETTER=0
+BASE_AUTO=0
+THREADING="shallow"
+RFC=0
+VERBOSE=0
+
+usage() {
+    cat << EOF
+Usage: $SCRIPT_NAME [OPTIONS] <commit-range>
+
+Kernel-specific git format-patch wrapper with sensible defaults.
+
+Options:
+  -o, --output-dir DIR     Output directory (default: $OUTPUT_DIR)
+  -c, --cover-letter       Generate cover letter
+  -b, --base-auto          Use --base=auto for automatic base detection
+  -s, --no-signoff         Disable automatic signoff
+  -p, --prefix PREFIX      Subject prefix (default: $KERNEL_SUBJECT_PREFIX)
+  -r, --rfc               Mark patches as RFC
+  -v, --verbose           Verbose output
+  -n, --numbered          Use numbered patches
+  -h, --help              Show this help
+
+Examples:
+  $SCRIPT_NAME HEAD~3              # Format last 3 commits
+  $SCRIPT_NAME -c HEAD~5           # Format with cover letter
+  $SCRIPT_NAME -r --prefix RFC HEAD~2  # RFC patches
+  $SCRIPT_NAME -b master..topic    # With base auto-detection
+
+The script applies kernel development best practices by default:
+- Signoff patches automatically
+- Use shallow threading for mailing lists
+- Create proper directory structure
+- Include base commit information when requested
+EOF
+}
+
+# Parse command line arguments
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -o|--output-dir)
+            OUTPUT_DIR="$2"
+            shift 2
+            ;;
+        -c|--cover-letter)
+            COVER_LETTER=1
+            shift
+            ;;
+        -b|--base-auto)
+            BASE_AUTO=1
+            shift
+            ;;
+        -s|--no-signoff)
+            SIGNOFF=0
+            shift
+            ;;
+        -p|--prefix)
+            KERNEL_SUBJECT_PREFIX="$2"
+            shift 2
+            ;;
+        -r|--rfc)
+            RFC=1
+            KERNEL_SUBJECT_PREFIX="RFC PATCH"
+            shift
+            ;;
+        -v|--verbose)
+            VERBOSE=1
+            shift
+            ;;
+        -n|--numbered)
+            NUMBERED=1
+            shift
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        -*)
+            echo "Unknown option: $1" >&2
+            usage >&2
+            exit 1
+            ;;
+        *)
+            # This should be the commit range
+            COMMIT_RANGE="$1"
+            shift
+            break
+            ;;
+    esac
+done
+
+# Validate we have a commit range
+if [[ -z "$COMMIT_RANGE" ]]; then
+    echo "Error: No commit range specified" >&2
+    usage >&2
+    exit 1
+fi
+
+# Check if we're in a git repository
+if ! git rev-parse --git-dir >/dev/null 2>&1; then
+    echo "Error: Not in a git repository" >&2
+    exit 1
+fi
+
+# Create output directory if it doesn't exist
+mkdir -p "$OUTPUT_DIR"
+
+# Build git format-patch command
+FORMAT_PATCH_CMD="git format-patch"
+
+# Add output directory
+FORMAT_PATCH_CMD="$FORMAT_PATCH_CMD -o $OUTPUT_DIR"
+
+# Add subject prefix
+FORMAT_PATCH_CMD="$FORMAT_PATCH_CMD --subject-prefix='$KERNEL_SUBJECT_PREFIX'"
+
+# Add signoff if enabled
+if [[ $SIGNOFF -eq 1 ]]; then
+    FORMAT_PATCH_CMD="$FORMAT_PATCH_CMD --signoff"
+fi
+
+# Add cover letter if requested
+if [[ $COVER_LETTER -eq 1 ]]; then
+    FORMAT_PATCH_CMD="$FORMAT_PATCH_CMD --cover-letter"
+fi
+
+# Add base auto-detection if requested
+if [[ $BASE_AUTO -eq 1 ]]; then
+    FORMAT_PATCH_CMD="$FORMAT_PATCH_CMD --base=auto"
+fi
+
+# Add threading (kernel mailing lists prefer shallow threading)
+FORMAT_PATCH_CMD="$FORMAT_PATCH_CMD --thread=$THREADING"
+
+# Add numbered patches if requested
+if [[ $NUMBERED -eq 1 ]]; then
+    FORMAT_PATCH_CMD="$FORMAT_PATCH_CMD --numbered"
+fi
+
+# Add commit range
+FORMAT_PATCH_CMD="$FORMAT_PATCH_CMD $COMMIT_RANGE"
+
+# Show command if verbose
+if [[ $VERBOSE -eq 1 ]]; then
+    echo "Executing: $FORMAT_PATCH_CMD"
+fi
+
+# Execute the command
+if eval "$FORMAT_PATCH_CMD"; then
+    echo ""
+    echo "Patches generated successfully in $OUTPUT_DIR/"
+    echo ""
+    echo "Next steps:"
+    echo "1. Review the generated patches"
+    if [[ $COVER_LETTER -eq 1 ]]; then
+        echo "2. Edit the cover letter in $OUTPUT_DIR/0000-cover-letter.patch"
+    fi
+    echo "2. Run ./scripts/checkpatch.pl on each patch"
+    echo "3. Send patches using git send-email or your preferred method"
+    echo ""
+    echo "Files generated:"
+    ls -la "$OUTPUT_DIR"/*.patch 2>/dev/null | while read -r line; do
+        echo "  $line"
+    done
+else
+    echo "Error: Failed to generate patches" >&2
+    exit 1
+fi
