@@ -447,7 +447,7 @@ impl Drop for FileDescriptorReservation {
     }
 }
 
-/// Represents the `EBADF` error code.
+/// Represents the [`EBADF`] error code.
 ///
 /// Used for methods that can only fail with `EBADF`.
 #[derive(Copy, Clone, Eq, PartialEq)]
